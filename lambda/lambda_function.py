@@ -648,6 +648,24 @@ class PlaySongByArtistHandler(AbstractRequestHandler):
         return player_controller.play_song_by_artist()
 
 
+class PlaySongHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlaySong' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlaySong')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlaySongHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_song()
+
+
 class PlayAlbumByArtistHandler(AbstractRequestHandler):
     """
     Handler for the 'PlayAlbumByArtist' intent.
@@ -869,6 +887,7 @@ sb.add_request_handler(PlaybackFailedEventHandler())
 sb.add_request_handler(PlaybackSongDetailsHandler())
 sb.add_request_handler(PlayRandomMusicHandler())
 sb.add_request_handler(PlayMusicByArtistHandler())
+sb.add_request_handler(PlaySongHandler())
 sb.add_request_handler(PlayAlbumByArtistHandler())
 sb.add_request_handler(PlaySongByArtistHandler())
 sb.add_request_handler(PlayMusicByGenreHandler())

@@ -76,6 +76,8 @@ class Controller:
             Plays random music.
         play_music_by_artist() -> Response:
             Plays music by a given artist.
+        play_song() -> Response:
+            Plays a specific song by title only.
         play_song_by_artist() -> Response:
             Plays a specific song by a given artist.
         play_album_by_artist() -> Response:
@@ -759,6 +761,66 @@ class Controller:
         self.add_plex_tracks(plex_track_list)
 
         playlist_name = data[prompts.PMS_PLNAME_MUSIC_BY_ARTIST].format(artist.value)
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+        return self.start_playback()
+
+
+    def play_song(self) -> Response:
+        """
+        Play a specific song by title only.
+        This method searches for tracks matching the supplied song title. If no
+        track is found or an error occurs during the search, an appropriate
+        response is returned. Otherwise, it clears the current playlist, adds the
+        selected track to the playlist, sets the playlist name, and starts
+        playback.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_song()')
+
+        # get localization data
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        # Get variable(s) from intent
+        song = get_slot_value_v2(self.handler_input, 'song')
+        if song is None:
+            speak_output = data[prompts.SKILL_INTENT_SLOTS_MISSING]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        # Get the music section
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        # Search for the song
+        try:
+            plex_track_list = self.section.searchTracks(title=song.value)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(plex_track_list) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        exact_match = next(
+            (track for track in plex_track_list if track.title.casefold() == song.value.casefold()),
+            None,
+        )
+        plex_track = exact_match if exact_match is not None else plex_track_list[0]
+
+        self.clear_playlist()
+        self.add_plex_track(plex_track)
+
+        playlist_name = plex_track.title
         self.set_playlist_name(playlist_name)
         speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
 

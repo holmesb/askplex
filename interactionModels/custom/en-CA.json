@@ -113,6 +113,20 @@
             "Play music by the singer {artist}",
             "Play music by the band {artist}"
           ]
+        },        {
+          "slots": [
+            {
+              "name": "song",
+              "type": "AMAZON.MusicRecording"
+            }
+          ],
+          "name": "PlaySong",
+          "samples": [
+            "Song {song}",
+            "Play {song}",
+            "Play song {song}",
+            "Play the song {song}"
+          ]
         },
         {
           "slots": [
