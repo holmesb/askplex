@@ -261,7 +261,9 @@ class Controller:
         playback_info["playback_index_changed"] = True
         playback_info["playlist"] = {}
         playback_info["play_order"] = []
-
+        playback_info["album_start_indices"] = []
+        playback_info["album_titles"] = []
+        playback_info["album_navigation_enabled"] = False
 
 #
 # Playback control
@@ -1465,6 +1467,260 @@ class Controller:
         self.logger.info(speak_output)
 
         return self.start_playback()
+
+
+    def _album_added_sort_value(self, album) -> float:
+        """
+        Return a sortable numeric value for an album's addedAt timestamp.
+        Newer albums should sort first.
+        """
+
+        added_at = getattr(album, 'addedAt', None)
+        if added_at is None:
+            return 0.0
+
+        try:
+            return float(added_at.timestamp())
+        except Exception:
+            return 0.0
+
+
+    def _set_album_navigation(self, album_start_indices: List[int], album_titles: List[str]) -> None:
+        """
+        Persist album boundary metadata for album-level navigation.
+        """
+
+        persistence_attr = self.handler_input.attributes_manager.persistent_attributes
+        playback_info = persistence_attr.get("playback_info")
+        playback_info["album_start_indices"] = album_start_indices
+        playback_info["album_titles"] = album_titles
+        playback_info["album_navigation_enabled"] = len(album_start_indices) > 0
+
+
+    def _build_album_block_playlist(self, plex_album_list: List) -> None:
+        """
+        Build a flat playlist from album blocks while preserving track order inside
+        each album and recording album boundaries for next/previous album actions.
+        """
+
+        self.clear_playlist()
+
+        album_start_indices = []
+        album_titles = []
+        playlist_index = 0
+
+        for album in plex_album_list:
+            try:
+                plex_track_list = album.tracks()
+            except Exception:
+                plex_track_list = []
+
+            if len(plex_track_list) == 0:
+                continue
+
+            album_start_indices.append(playlist_index)
+            album_titles.append(getattr(album, 'title', ''))
+
+            self.add_plex_tracks(plex_track_list)
+            playlist_index += len(plex_track_list)
+
+        self._set_album_navigation(album_start_indices, album_titles)
+
+
+    def _jump_to_album(self, direction: int) -> Response:
+        """
+        Jump to the first track of the next or previous album block.
+        direction=1 means next album, direction=-1 means previous album.
+        """
+
+        self.logger.debug(f'In _jump_to_album(direction={direction})')
+        persistence_attr = self.handler_input.attributes_manager.persistent_attributes
+        playback_info = persistence_attr.get("playback_info")
+        playback_setting = persistence_attr.get("playback_setting")
+
+        album_start_indices = playback_info.get("album_start_indices", [])
+        if not playback_info.get("album_navigation_enabled") or len(album_start_indices) == 0:
+            return self.handler_input.response_builder.response
+
+        current_index = int(playback_info["index"])
+        playlist_len = len(playback_info["playlist"])
+        if playlist_len == 0:
+            return self.handler_input.response_builder.response
+
+        current_album_index = 0
+        for i, start_index in enumerate(album_start_indices):
+            if current_index >= start_index:
+                current_album_index = i
+            else:
+                break
+
+        target_album_index = current_album_index + direction
+        if target_album_index < 0:
+            if not playback_setting.get("loop"):
+                return self.handler_input.response_builder.response
+            target_album_index = len(album_start_indices) - 1
+        elif target_album_index >= len(album_start_indices):
+            if not playback_setting.get("loop"):
+                return self.handler_input.response_builder.response
+            target_album_index = 0
+
+        playback_info["index"] = album_start_indices[target_album_index]
+        playback_info["offset_in_ms"] = 0
+        playback_info["playback_index_changed"] = True
+
+        target_track = self.get_current_track()
+        if target_track is None:
+            return self.handler_input.response_builder.response
+
+        directive = PlayDirective(
+            play_behavior=PlayBehavior.REPLACE_ALL,
+            audio_item=self.track_to_audio_item(target_track, 0, None),
+        )
+        self.handler_input.response_builder.add_directive(directive).set_should_end_session(True)
+        return self.handler_input.response_builder.response
+
+
+    def next_album_playback(self) -> Response:
+        """
+        Jump to the first track of the next album in an album-block playlist.
+        """
+
+        self.logger.debug('In next_album_playback()')
+        return self._jump_to_album(1)
+
+
+    def previous_album_playback(self) -> Response:
+        """
+        Jump to the first track of the previous album in an album-block playlist.
+        """
+
+        self.logger.debug('In previous_album_playback()')
+        return self._jump_to_album(-1)
+
+
+    def play_recently_added(self) -> Response:
+        """
+        Plays the 12 most recently added albums in random album order while keeping
+        the tracks within each album in normal sequence.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_recently_added()')
+
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        album_count = 12
+
+        try:
+            plex_album_list = self.section.searchAlbums(sort='addedAt:desc', maxresults=album_count)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_CONNECTION_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(plex_album_list) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        plex_album_list = list(plex_album_list)
+        random.shuffle(plex_album_list)
+
+        self._build_album_block_playlist(plex_album_list)
+
+        persistence_attr = self.handler_input.attributes_manager.persistent_attributes
+        playback_info = persistence_attr.get("playback_info")
+        if len(playback_info.get("playlist", {})) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        playlist_name = 'Recently added albums'
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+        return self.start_playback()
+
+
+    def play_artist_newest(self) -> Response:
+        """
+        Plays the most recently added album by the requested artist.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_artist_newest()')
+
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        artist = get_slot_value_v2(self.handler_input, 'artist')
+        if artist is None:
+            speak_output = data[prompts.SKILL_INTENT_SLOTS_MISSING]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        artist_value = artist.value.strip()
+
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        try:
+            artist_results = self.section.searchArtists(title=artist_value)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_ARTIST_SEARCH_ERROR].format(artist_value)
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(artist_results) == 0:
+            speak_output = data[prompts.PMS_ARTIST_SEARCH_EMPTY].format(artist_value)
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        try:
+            plex_album_list = artist_results[0].albums()
+        except Exception as exception:
+            speak_output = data[prompts.PMS_CONNECTION_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(plex_album_list) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        sorted_albums = sorted(
+            plex_album_list,
+            key=self._album_added_sort_value,
+            reverse=True,
+        )
+        newest_album = sorted_albums[0]
+
+        self._build_album_block_playlist([newest_album])
+
+        persistence_attr = self.handler_input.attributes_manager.persistent_attributes
+        playback_info = persistence_attr.get("playback_info")
+        if len(playback_info.get("playlist", {})) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        album_title = getattr(newest_album, 'title', '')
+        playlist_name = f'the newest album {album_title} by {artist_value}'
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+        return self.start_playback()
+
 
 
     def play_playlist (self) -> Response:

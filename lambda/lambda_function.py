@@ -630,6 +630,24 @@ class PlayArtistRadioHandler(AbstractRequestHandler):
         return player_controller.play_artist_radio()
 
 
+class PlayArtistNewestHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayArtistNewest' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayArtistNewest')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayArtistNewestHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_artist_newest()
+
+
 class PlayPopularArtistsHandler(AbstractRequestHandler):
     """
     Handler for the 'PlayPopularArtists' intent.
@@ -646,6 +664,24 @@ class PlayPopularArtistsHandler(AbstractRequestHandler):
         logger.debug('In PlayPopularArtistsHandler()')
         player_controller = controller.Controller(logger, handler_input)
         return player_controller.play_popular_artists()
+
+
+class PlayRecentlyAddedHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayRecentlyAdded' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayRecentlyAdded')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayRecentlyAddedHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_recently_added()
 
 
 class PlayRandomMusicHandler(AbstractRequestHandler):
@@ -772,6 +808,54 @@ class PlayMusicByGenreHandler(AbstractRequestHandler):
         logger.debug('In PlayMusicByGenreHandler()')
         player_controller = controller.Controller(logger, handler_input)
         return player_controller.play_music_by_genre()
+
+
+class NextAlbumPlaybackHandler(AbstractRequestHandler):
+    """
+    Handler for the 'NextAlbumPlayback' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('NextAlbumPlayback')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In NextAlbumPlaybackHandler()')
+        persistence_attr = handler_input.attributes_manager.persistent_attributes
+        playback_info = persistence_attr.get("playback_info")
+
+        if playback_info.get("in_playback_session"):
+            player_controller = controller.Controller(logger, handler_input)
+            return player_controller.next_album_playback()
+
+        return handler_input.response_builder.response
+
+
+class PreviousAlbumPlaybackHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PreviousAlbumPlayback' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PreviousAlbumPlayback')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PreviousAlbumPlaybackHandler()')
+        persistence_attr = handler_input.attributes_manager.persistent_attributes
+        playback_info = persistence_attr.get("playback_info")
+
+        if playback_info.get("in_playback_session"):
+            player_controller = controller.Controller(logger, handler_input)
+            return player_controller.previous_album_playback()
+
+        return handler_input.response_builder.response
 
 
 class PlayPlaylistHandler(AbstractRequestHandler):
@@ -959,7 +1043,9 @@ sb.add_request_handler(PlaybackFailedEventHandler())
 sb.add_request_handler(PlaybackSongDetailsHandler())
 sb.add_request_handler(PlayDeepCutsHandler())
 sb.add_request_handler(PlayArtistRadioHandler())
+sb.add_request_handler(PlayArtistNewestHandler())
 sb.add_request_handler(PlayPopularArtistsHandler())
+sb.add_request_handler(PlayRecentlyAddedHandler())
 sb.add_request_handler(PlayRandomMusicHandler())
 sb.add_request_handler(PlayMusicByArtistHandler())
 sb.add_request_handler(PlayNamedTrackHandler())
@@ -967,6 +1053,8 @@ sb.add_request_handler(PlaySongHandler())
 sb.add_request_handler(PlayAlbumByArtistHandler())
 sb.add_request_handler(PlaySongByArtistHandler())
 sb.add_request_handler(PlayMusicByGenreHandler())
+sb.add_request_handler(NextAlbumPlaybackHandler())
+sb.add_request_handler(PreviousAlbumPlaybackHandler())
 sb.add_request_handler(PlayPlaylistHandler())
 sb.add_exception_handler(CatchAllExceptionHandler())
 # Register Interceptors

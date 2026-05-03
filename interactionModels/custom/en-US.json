@@ -104,6 +104,20 @@
           ]
         },
         {
+          "slots": [],
+          "name": "PlayRecentlyAdded",
+          "samples": [
+            "Play new music",
+            "Play my new music",
+            "Play newly added music",
+            "Play latest added music",
+            "Play latest music",
+            "Play recently added",
+            "Play recently added music",
+            "Play recently added albums"
+          ]
+        },
+        {
           "slots": [
             {
               "name": "artist",
@@ -144,6 +158,23 @@
             "Play radio for {artist}",
             "Start {artist} radio",
             "Start radio for {artist}"
+          ]
+        },
+        {
+          "slots": [
+            {
+              "name": "artist",
+              "type": "AMAZON.Artist"
+            }
+          ],
+          "name": "PlayArtistNewest",
+          "samples": [
+            "Play {artist} newest",
+            "Play {artist} most recently added",
+            "Play {artist} most recent",
+            "Play the newest album by {artist}",
+            "Play the most recently added album by {artist}",
+            "Play the most recent album by {artist}"
           ]
         },
         {
@@ -254,6 +285,24 @@
           "samples": [
             "Playlist {playlist}",
             "Play the playlist {playlist}"
+          ]
+        },
+        {
+          "slots": [],
+          "name": "NextAlbumPlayback",
+          "samples": [
+            "Next album",
+            "Play next album",
+            "Skip to next album"
+          ]
+        },
+        {
+          "slots": [],
+          "name": "PreviousAlbumPlayback",
+          "samples": [
+            "Previous album",
+            "Play previous album",
+            "Go to previous album"
           ]
         },
         {

@@ -42,11 +42,16 @@ Plex Media Server with your music library.
 - Alexa, ask plex server to play some music
 - Alexa, ask plex server to play deep cuts
 - Alexa, ask plex server to play popular artists
+- Alexa, ask plex server to play new music / recently added
 
 ### By artist / song / album / genre / playlist
 - Alexa, ask plex server to play music by Moonspell
 - Alexa, ask plex server to play Full Moon Madness by Moonspell
 - Alexa, ask plex server to play the album Irreligious by Moonspell
+- Alexa, ask plex server to play Moonspell radio
+- Alexa, ask plex server to play Moonspell newest
+- Alexa, ask plex server to play Moonspell most recent
+- Alexa, ask plex server to play Moonspell most recently added
 - Alexa, ask plex server to play the metal music
 - Alexa, ask plex server to play the playlist Recently Added
 
@@ -59,7 +64,9 @@ Plex Media Server with your music library.
 - **play some music**: starts a Library Radio-style mix from a larger random candidate pool.
 - **play deep cuts**: similar to play some music, but uses a smaller candidate pool so it is more likely to surface less obvious tracks.
 - **play popular artists**: picks a small random set of artists, prefers each artist's popular tracks, then builds a mix from those.
+- **play recently added** / **play recently added music** / **play recently added albums**: takes the 12 most recently added albums, shuffles the album order, then plays each album from first track to last.
 - **play <artist> radio**: starts with tracks from the requested artist, then expands into similar artists to create an artist-radio style mix.
+- **play <artist> newest** / **play <artist> most recent** / **play <artist> most recently added**: plays the most recently added album by that artist.
 - **play Brown Noise** / **play song Brown Noise**: uses the named-track path for tracks you have added to the custom `track_names` slot list.
 
 ## Two-step voice commands
@@ -81,6 +88,8 @@ Invocation name is not needed for playback control:
 - Alexa, resume
 - Alexa, next
 - Alexa, previous
+- Alexa, next album
+- Alexa, previous album
 - Alexa, shuffle on
 - Alexa, shuffle off
 - Alexa, loop on
@@ -89,5 +98,7 @@ Invocation name is not needed for playback control:
 ## Notes
 - For song-name-only playback to work reliably, the track title in Plex metadata should closely match what you say.
 - The named tracks examples only work for tracks included in the custom `track_names` slot list.
+- In the recently added albums mode, **next** and **previous** still move by track; use **next album** and **previous album** to jump between albums.
+- The **newest** / **most recent** artist commands use the most recently **added** album in Plex, not necessarily the newest release by date.
 - If a phrase builds successfully but Alexa still does not route it correctly, check the interaction model and rebuild the skill model.
 

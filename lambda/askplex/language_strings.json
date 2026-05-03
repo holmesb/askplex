@@ -33,6 +33,8 @@
     "PMS_PLNAME_SONG": "{song} by {artist}",
     "PMS_PLNAME_ALBUM": "the album {album} by {artist}",
     "PMS_PLNAME_MUSIC_BY_GENRE": "{} music",
+    "PMS_PLNAME_RECENTLY_ADDED": "Recently added albums",
+    "PMS_PLNAME_ARTIST_NEWEST": "the newest album {album} by {artist}",
     "PMS_PLNAME_PLAYLIST": "the playlist {}"
   },
   "es": {
