@@ -612,6 +612,42 @@ class PlayDeepCutsHandler(AbstractRequestHandler):
         return player_controller.play_deep_cuts()
 
 
+class PlayArtistRadioHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayArtistRadio' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayArtistRadio')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayArtistRadioHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_artist_radio()
+
+
+class PlayPopularArtistsHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayPopularArtists' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayPopularArtists')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayPopularArtistsHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_popular_artists()
+
+
 class PlayRandomMusicHandler(AbstractRequestHandler):
     """
     Handler for the 'PlayRandomMusic' intent.
@@ -922,6 +958,8 @@ sb.add_request_handler(PlaybackFinishedHandler())
 sb.add_request_handler(PlaybackFailedEventHandler())
 sb.add_request_handler(PlaybackSongDetailsHandler())
 sb.add_request_handler(PlayDeepCutsHandler())
+sb.add_request_handler(PlayArtistRadioHandler())
+sb.add_request_handler(PlayPopularArtistsHandler())
 sb.add_request_handler(PlayRandomMusicHandler())
 sb.add_request_handler(PlayMusicByArtistHandler())
 sb.add_request_handler(PlayNamedTrackHandler())

@@ -89,6 +89,14 @@
         },
         {
           "slots": [],
+          "name": "PlayPopularArtists",
+          "samples": [
+            "Play popular artists",
+            "Play some popular artists"
+          ]
+        },
+        {
+          "slots": [],
           "name": "PlayDeepCuts",
           "samples": [
             "Play deep cuts",
@@ -121,7 +129,24 @@
             "Play music by the singer {artist}",
             "Play music by the band {artist}"
           ]
-        },                {
+        },
+        {
+          "slots": [
+            {
+              "name": "artist",
+              "type": "AMAZON.Artist"
+            }
+          ],
+          "name": "PlayArtistRadio",
+          "samples": [
+            "Play {artist} radio",
+            "Play artist radio for {artist}",
+            "Play radio for {artist}",
+            "Start {artist} radio",
+            "Start radio for {artist}"
+          ]
+        },
+        {
           "slots": [
             {
               "name": "song",
@@ -144,7 +169,8 @@
             }
           ],
           "name": "PlayNamedTrack",
-          "samples": [            "Play {track_name}",
+          "samples": [
+            "Play {track_name}",
             "Play song {track_name}",
             "Play the song {track_name}"
           ]

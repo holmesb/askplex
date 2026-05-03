@@ -1234,6 +1234,238 @@ class Controller:
         self.logger.info(speak_output)
         return self.start_playback()
 
+    def _select_popular_artist_tracks(self, artist_count: int, max_results: int) -> List[Track]:
+        """
+        Build a candidate pool from random artists, preferring each artist's
+        popular tracks, then score and trim the result.
+        """
+
+        artist_results = self.section.searchArtists(sort='random', maxresults=int(artist_count))
+
+        deduped_candidates = []
+        seen_rating_keys = set()
+        per_artist_limit = 3
+
+        for artist in artist_results:
+            try:
+                plex_track_list = artist.popularTracks()[:per_artist_limit]
+            except Exception:
+                plex_track_list = []
+
+            if len(plex_track_list) == 0:
+                try:
+                    plex_track_list = artist.tracks()[:per_artist_limit]
+                except Exception:
+                    plex_track_list = []
+
+            for track in plex_track_list:
+                rating_key = str(getattr(track, 'ratingKey', ''))
+                if rating_key in seen_rating_keys:
+                    continue
+                seen_rating_keys.add(rating_key)
+                deduped_candidates.append(track)
+
+        scored_tracks = sorted(
+            deduped_candidates,
+            key=self._library_radio_score,
+            reverse=True,
+        )
+
+        return scored_tracks[:int(max_results)]
+
+    def play_popular_artists(self) -> Response:
+        """
+        Plays a mix built from random artists, preferring each artist's popular
+        tracks, then applying the library-radio style scoring.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_popular_artists()')
+
+        # get localization data
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        # Get the music section
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        max_results = max(int(config.PMS_DEFAULT_MAX_RESULTS), 1)
+        artist_count = min(max(max_results // 20, 4), 6)
+
+        try:
+            selected_tracks = self._select_popular_artist_tracks(artist_count, max_results)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_CONNECTION_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(selected_tracks) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        self.clear_playlist()
+        self.add_plex_tracks(selected_tracks)
+
+        playlist_name = 'Popular artists'
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+
+        return self.start_playback()
+
+    def _select_artist_radio_tracks(self, seed_artist, max_results: int) -> List[Track]:
+        """
+        Build an artist-radio style mix starting from the requested artist, then
+        expanding into sonically similar / related artists.
+        """
+
+        per_seed_limit = 3
+        per_related_limit = 2
+        related_artist_limit = 4
+
+        candidate_artists = []
+        seen_artist_keys = set()
+
+        def add_artist(artist_obj) -> None:
+            rating_key = str(getattr(artist_obj, 'ratingKey', ''))
+            if not rating_key or rating_key in seen_artist_keys:
+                return
+            seen_artist_keys.add(rating_key)
+            candidate_artists.append(artist_obj)
+
+        add_artist(seed_artist)
+
+        try:
+            for artist_obj in seed_artist.sonicallySimilar(limit=related_artist_limit):
+                add_artist(artist_obj)
+                if len(candidate_artists) >= related_artist_limit + 1:
+                    break
+        except Exception:
+            pass
+
+        if len(candidate_artists) < 3:
+            for similar_obj in getattr(seed_artist, 'similar', [])[:related_artist_limit]:
+                similar_name = getattr(similar_obj, 'tag', None)
+                if not similar_name:
+                    continue
+                try:
+                    artist_results = self.section.searchArtists(title=similar_name)
+                except Exception:
+                    artist_results = []
+                if len(artist_results) == 0:
+                    continue
+                add_artist(artist_results[0])
+                if len(candidate_artists) >= related_artist_limit + 1:
+                    break
+
+        seed_tracks = []
+        related_candidates = []
+        seen_track_keys = set()
+
+        for index, artist_obj in enumerate(candidate_artists):
+            limit = per_seed_limit if index == 0 else per_related_limit
+
+            try:
+                plex_track_list = artist_obj.popularTracks()[:limit]
+            except Exception:
+                plex_track_list = []
+
+            if len(plex_track_list) == 0:
+                try:
+                    plex_track_list = artist_obj.tracks()[:limit]
+                except Exception:
+                    plex_track_list = []
+
+            for track in plex_track_list:
+                rating_key = str(getattr(track, 'ratingKey', ''))
+                if not rating_key or rating_key in seen_track_keys:
+                    continue
+                seen_track_keys.add(rating_key)
+                if index == 0:
+                    seed_tracks.append(track)
+                else:
+                    related_candidates.append(track)
+
+        scored_related_tracks = sorted(
+            related_candidates,
+            key=self._library_radio_score,
+            reverse=True,
+        )
+
+        selected_tracks = seed_tracks + scored_related_tracks
+        return selected_tracks[:int(max_results)]
+
+    def play_artist_radio(self) -> Response:
+        """
+        Plays an artist radio style mix seeded from the requested artist and then
+        expanded using similar artists.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_artist_radio()')
+
+        # get localization data
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        # Get variable(s) from intent
+        artist = get_slot_value_v2(self.handler_input, 'artist')
+        if artist is None:
+            speak_output = data[prompts.SKILL_INTENT_SLOTS_MISSING]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        artist_value = artist.value.strip()
+
+        # Get the music section
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        # Search for the seed artist
+        try:
+            artist_results = self.section.searchArtists(title=artist_value)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_ARTIST_SEARCH_ERROR].format(artist_value)
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(artist_results) == 0:
+            speak_output = data[prompts.PMS_ARTIST_SEARCH_EMPTY].format(artist_value)
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        max_results = max(int(config.PMS_DEFAULT_MAX_RESULTS), 1)
+
+        try:
+            selected_tracks = self._select_artist_radio_tracks(artist_results[0], max_results)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_CONNECTION_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(selected_tracks) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        self.clear_playlist()
+        self.add_plex_tracks(selected_tracks)
+
+        playlist_name = f'{artist_value} radio'
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+
+        return self.start_playback()
+
 
     def play_playlist (self) -> Response:
         """

@@ -27,6 +27,8 @@
     "PMS_PLAYING": "Playing {} in AsPlex",
     "PMS_PLNAME_RANDOM_MUSIC": "Library radio",
     "PMS_PLNAME_DEEP_CUTS": "Deep cuts",
+    "PMS_PLNAME_POPULAR_ARTISTS": "Popular artists",
+    "PMS_PLNAME_ARTIST_RADIO": "{} radio",
     "PMS_PLNAME_MUSIC_BY_ARTIST": "music by {}",
     "PMS_PLNAME_SONG": "{song} by {artist}",
     "PMS_PLNAME_ALBUM": "the album {album} by {artist}",
