@@ -35,6 +35,7 @@
     "PMS_PLNAME_MUSIC_BY_GENRE": "{} music",
     "PMS_PLNAME_RECENTLY_ADDED": "Recently added albums",
     "PMS_PLNAME_ARTIST_NEWEST": "the newest album {album} by {artist}",
+    "PMS_PLNAME_TIME_TRAVEL_RADIO": "Time travel radio",
     "PMS_PLNAME_PLAYLIST": "the playlist {}"
   },
   "es": {

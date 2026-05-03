@@ -43,6 +43,7 @@ Plex Media Server with your music library.
 - Alexa, ask plex server to play deep cuts
 - Alexa, ask plex server to play popular artists
 - Alexa, ask plex server to play new music / recently added
+- Alexa, ask plex server to play time travel radio
 
 ### By artist / song / album / genre / playlist
 - Alexa, ask plex server to play music by Moonspell
@@ -67,6 +68,7 @@ Plex Media Server with your music library.
 - **play recently added** / **play recently added music** / **play recently added albums**: takes the 12 most recently added albums, shuffles the album order, then plays each album from first track to last.
 - **play <artist> radio**: starts with tracks from the requested artist, then expands into similar artists to create an artist-radio style mix.
 - **play <artist> newest** / **play <artist> most recent** / **play <artist> most recently added**: plays the most recently added album by that artist.
+- **play time travel radio**: builds a roughly 45-minute mix that starts with earlier music in your library and works forward through time, with some randomness and a preference for stronger tracks within each era.
 - **play Brown Noise** / **play song Brown Noise**: uses the named-track path for tracks you have added to the custom `track_names` slot list.
 
 ## Two-step voice commands

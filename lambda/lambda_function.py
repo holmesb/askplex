@@ -810,6 +810,23 @@ class PlayMusicByGenreHandler(AbstractRequestHandler):
         return player_controller.play_music_by_genre()
 
 
+class PlayTimeTravelRadioHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayTimeTravelRadio' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayTimeTravelRadio')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayTimeTravelRadioHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_time_travel_radio()
+
+
 class NextAlbumPlaybackHandler(AbstractRequestHandler):
     """
     Handler for the 'NextAlbumPlayback' intent.
@@ -1056,6 +1073,7 @@ sb.add_request_handler(PlayMusicByGenreHandler())
 sb.add_request_handler(NextAlbumPlaybackHandler())
 sb.add_request_handler(PreviousAlbumPlaybackHandler())
 sb.add_request_handler(PlayPlaylistHandler())
+sb.add_request_handler(PlayTimeTravelRadioHandler())
 sb.add_exception_handler(CatchAllExceptionHandler())
 # Register Interceptors
 sb.add_global_request_interceptor(LocalizationInterceptor())

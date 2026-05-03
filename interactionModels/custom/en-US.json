@@ -118,6 +118,13 @@
           ]
         },
         {
+          "slots": [],
+          "name": "PlayTimeTravelRadio",
+          "samples": [
+            "Play time travel radio"
+          ]
+        },
+        {
           "slots": [
             {
               "name": "artist",

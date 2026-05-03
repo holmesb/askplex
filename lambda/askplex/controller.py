@@ -463,8 +463,216 @@ class Controller:
         self.handler_input.response_builder.speak(speak_output).set_should_end_session(True)
         return self.handler_input.response_builder.response
 
+    def _album_release_sort_value(self, album) -> float:
+        """
+        Return a sortable numeric value for an album's release chronology.
+        Earlier albums should sort first.
+        Falls back from full release date to year, then to added date.
+        """
 
-#
+        original_date = getattr(album, 'originallyAvailableAt', None)
+        if original_date is not None:
+            try:
+                return float(original_date.timestamp())
+            except Exception:
+                pass
+
+        year = getattr(album, 'year', None)
+        if year is not None:
+            try:
+                return float(year)
+            except Exception:
+                pass
+
+        added_at = getattr(album, 'addedAt', None)
+        if added_at is not None:
+            try:
+                return float(added_at.timestamp())
+            except Exception:
+                pass
+
+        return float('inf')
+
+
+    def _time_travel_track_score(self, track: Track) -> float:
+        """
+        Score a track for time-travel radio, preferring stronger / more popular
+        candidates while keeping a little randomness.
+        """
+
+        user_rating = self._track_float(track, 'userRating')
+        critic_rating = self._track_float(track, 'rating')
+        view_count = self._track_float(track, 'viewCount')
+        randomness = random.uniform(0.0, 0.75)
+
+        return (
+            (user_rating * 3.0) +
+            (critic_rating * 1.5) +
+            (min(view_count, 20.0) * 0.20) +
+            randomness
+        )
+
+
+    def _pick_time_travel_track_from_album(self, album):
+        """
+        Pick a single track from an album, preferring popular tracks but keeping
+        some variation between runs.
+        """
+
+        try:
+            plex_track_list = album.tracks()
+        except Exception:
+            plex_track_list = []
+
+        if len(plex_track_list) == 0:
+            return None
+
+        scored_tracks = sorted(
+            plex_track_list,
+            key=self._time_travel_track_score,
+            reverse=True,
+        )
+
+        candidate_pool_size = min(3, len(scored_tracks))
+        candidate_pool = scored_tracks[:candidate_pool_size]
+        return random.choice(candidate_pool)
+
+
+    def _get_time_travel_candidate_albums(self, candidate_album_limit: int) -> List:
+        """
+        Return a bounded set of early albums for time-travel radio.
+        This avoids scanning the entire library, which can exceed the Lambda time budget.
+        """
+
+        try:
+            plex_album_list = list(
+                self.section.searchAlbums(
+                    sort='year:asc',
+                    maxresults=int(candidate_album_limit),
+                )
+            )
+        except Exception:
+            plex_album_list = []
+
+        if len(plex_album_list) == 0:
+            try:
+                plex_album_list = list(
+                    self.section.searchAlbums(
+                        maxresults=int(candidate_album_limit),
+                    )
+                )
+            except Exception:
+                plex_album_list = []
+
+        if len(plex_album_list) == 0:
+            return []
+
+        return sorted(
+            plex_album_list,
+            key=self._album_release_sort_value,
+        )
+
+
+    def _select_time_travel_tracks(self, target_duration_ms: int) -> List[Track]:
+        """
+        Build a time-travel style playlist by ordering a bounded set of early albums
+        chronologically, dividing them into eras, then choosing one album per era and
+        a stronger track from that album.
+        """
+
+        candidate_album_limit = 240
+        sorted_albums = self._get_time_travel_candidate_albums(candidate_album_limit)
+        if len(sorted_albums) == 0:
+            return []
+
+        era_count = min(12, len(sorted_albums))
+        if era_count == 0:
+            return []
+
+        selected_tracks = []
+        selected_track_keys = set()
+        total_duration_ms = 0
+        min_track_count = 10
+        max_track_count = 14
+
+        for era_index in range(era_count):
+            start_index = (era_index * len(sorted_albums)) // era_count
+            end_index = ((era_index + 1) * len(sorted_albums)) // era_count
+            era_albums = sorted_albums[start_index:end_index]
+            if len(era_albums) == 0:
+                continue
+
+            random.shuffle(era_albums)
+
+            chosen_track = None
+            for chosen_album in era_albums[:3]:
+                chosen_track = self._pick_time_travel_track_from_album(chosen_album)
+                if chosen_track is not None:
+                    break
+
+            if chosen_track is None:
+                continue
+
+            rating_key = str(getattr(chosen_track, 'ratingKey', ''))
+            if not rating_key or rating_key in selected_track_keys:
+                continue
+
+            selected_track_keys.add(rating_key)
+            selected_tracks.append(chosen_track)
+            total_duration_ms += int(getattr(chosen_track, 'duration', 0) or 0)
+
+            if len(selected_tracks) >= max_track_count:
+                break
+
+            if len(selected_tracks) >= min_track_count and total_duration_ms >= target_duration_ms:
+                break
+
+        return selected_tracks
+
+
+    def play_time_travel_radio(self) -> Response:
+        """
+        Plays a chronological, roughly 45-minute mix that starts with early music
+        in the library and works forward through time.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_time_travel_radio()')
+
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        target_duration_ms = 45 * 60 * 1000
+
+        try:
+            selected_tracks = self._select_time_travel_tracks(target_duration_ms)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_CONNECTION_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(selected_tracks) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        self.clear_playlist()
+        self.add_plex_tracks(selected_tracks)
+
+        playlist_name = 'Time travel radio'
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+        return self.start_playback()
+
+
+    #
 # Playback events
 #
     def playback_started (self) -> Response:
