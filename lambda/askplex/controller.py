@@ -832,10 +832,8 @@ class Controller:
     def play_song_by_artist (self) -> Response:
         """
         Play a specific song by a given artist.
-        This method searches the specific song. If no track is found or an error
-        occurs during the search, an appropriate response is returned. Otherwise,
-        it clears the current playlist, adds the found tracks to the playlist, sets
-        the playlist name, and starts playback.
+        This method searches tracks by song title, then filters the results by artist
+        name to avoid Plex's stricter exact-match artist.track() lookup.
         Returns:
             Response: The response object containing the result of the playback action.
         """
@@ -853,47 +851,69 @@ class Controller:
             self.logger.error(speak_output)
             return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
+        artist_value = artist.value.strip()
+        song_value = song.value.strip()
+        artist_cf = artist_value.casefold()
+        song_cf = song_value.casefold()
+
         # Get the music section
         response = self.load_music_section()
         if response is not None:
             return response
 
-        # Search for the artist
+        # Search for candidate tracks by title first
         try:
-            artist_results = self.section.searchArtists(title=artist.value)
+            plex_track_list = self.section.searchTracks(title=song_value)
         except Exception as exception:
-            speak_output = data[prompts.PMS_ARTIST_SEARCH_ERROR].format(artist.value)
+            speak_output = data[prompts.PMS_SONG_SEARCH_ERROR].format(song=song_value, artist=artist_value)
             self.logger.error(exception)
             return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
-        if len(artist_results) == 0:
-            speak_output = data[prompts.PMS_ARTIST_SEARCH_EMPTY].format(artist.value)
+        if len(plex_track_list) == 0:
+            speak_output = data[prompts.PMS_SONG_SEARCH_EMPTY].format(song=song_value, artist=artist_value)
             self.logger.error(speak_output)
             return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
-        # Search for the song
-        try:
-            plex_track = artist_results[0].track(song.value)
-        except NotFound  as exception:
-            speak_output = data[prompts.PMS_SONG_SEARCH_ERROR].format(song=song.value, artist=artist.value)
-            self.logger.error(exception)
-            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
-        except Exception as exception:
-            speak_output = data[prompts.PMS_SONG_SEARCH_ERROR].format(song=song.value, artist=artist.value)
-            self.logger.error(exception)
+        def track_artist_name(track: Track) -> str:
+            return (track.grandparentTitle or '').strip()
+
+        exact_song_exact_artist = [
+            track for track in plex_track_list
+            if track.title.casefold() == song_cf and track_artist_name(track).casefold() == artist_cf
+        ]
+
+        exact_artist = [
+            track for track in plex_track_list
+            if track_artist_name(track).casefold() == artist_cf
+        ]
+
+        loose_artist = [
+            track for track in plex_track_list
+            if artist_cf in track_artist_name(track).casefold()
+            or track_artist_name(track).casefold() in artist_cf
+        ]
+
+        if len(exact_song_exact_artist) > 0:
+            plex_track = exact_song_exact_artist[0]
+        elif len(exact_artist) > 0:
+            plex_track = exact_artist[0]
+        elif len(loose_artist) > 0:
+            plex_track = loose_artist[0]
+        else:
+            speak_output = data[prompts.PMS_SONG_SEARCH_EMPTY].format(song=song_value, artist=artist_value)
+            self.logger.error(speak_output)
             return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
         self.clear_playlist()
         self.add_plex_track(plex_track)
 
-        playlist_name = data[prompts.PMS_PLNAME_SONG].format(song=song.value, artist=artist.value)
+        playlist_name = data[prompts.PMS_PLNAME_SONG].format(song=plex_track.title, artist=track_artist_name(plex_track))
         self.set_playlist_name(playlist_name)
         speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
 
         self.handler_input.response_builder.speak(speak_output)
         self.logger.info(speak_output)
         return self.start_playback()
-
 
     def play_album_by_artist (self) -> Response:
         """
