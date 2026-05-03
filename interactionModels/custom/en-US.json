@@ -88,6 +88,14 @@
           ]
         },
         {
+          "slots": [],
+          "name": "PlayDeepCuts",
+          "samples": [
+            "Play deep cuts",
+            "Play deep-cuts"
+          ]
+        },
+        {
           "slots": [
             {
               "name": "artist",
@@ -113,7 +121,7 @@
             "Play music by the singer {artist}",
             "Play music by the band {artist}"
           ]
-        },        {
+        },                {
           "slots": [
             {
               "name": "song",
@@ -126,6 +134,19 @@
             "Play {song}",
             "Play song {song}",
             "Play the song {song}"
+          ]
+        },
+        {
+          "slots": [
+            {
+              "name": "track_name",
+              "type": "track_names"
+            }
+          ],
+          "name": "PlayNamedTrack",
+          "samples": [            "Play {track_name}",
+            "Play song {track_name}",
+            "Play the song {track_name}"
           ]
         },
         {
@@ -233,6 +254,21 @@
             }
           ],
           "name": "playlist_names"
+        },
+        {
+          "values": [
+            {
+              "name": {
+                "value": "Brown Noise"
+              }
+            },
+            {
+              "name": {
+                "value": "White Noise"
+              }
+            }
+          ],
+          "name": "track_names"
         }
       ]
     }

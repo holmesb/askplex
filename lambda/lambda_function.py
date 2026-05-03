@@ -594,6 +594,24 @@ class PlaybackSongDetailsHandler(AbstractRequestHandler):
         return handler_input.response_builder.response
 
 
+class PlayDeepCutsHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayDeepCuts' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayDeepCuts')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayDeepCutsHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_deep_cuts()
+
+
 class PlayRandomMusicHandler(AbstractRequestHandler):
     """
     Handler for the 'PlayRandomMusic' intent.
@@ -646,6 +664,24 @@ class PlaySongByArtistHandler(AbstractRequestHandler):
         logger.debug('In PlaySongByArtistHandler()')
         player_controller = controller.Controller(logger, handler_input)
         return player_controller.play_song_by_artist()
+
+
+class PlayNamedTrackHandler(AbstractRequestHandler):
+    """
+    Handler for the 'PlayNamedTrack' intent.
+    Returns:
+        Response: The response object containing the result of the playback action.
+    """
+
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return is_intent_name('PlayNamedTrack')(handler_input)
+
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        logger.debug('In PlayNamedTrackHandler()')
+        player_controller = controller.Controller(logger, handler_input)
+        return player_controller.play_named_track()
 
 
 class PlaySongHandler(AbstractRequestHandler):
@@ -885,8 +921,10 @@ sb.add_request_handler(PlaybackNearlyFinishedHandler())
 sb.add_request_handler(PlaybackFinishedHandler())
 sb.add_request_handler(PlaybackFailedEventHandler())
 sb.add_request_handler(PlaybackSongDetailsHandler())
+sb.add_request_handler(PlayDeepCutsHandler())
 sb.add_request_handler(PlayRandomMusicHandler())
 sb.add_request_handler(PlayMusicByArtistHandler())
+sb.add_request_handler(PlayNamedTrackHandler())
 sb.add_request_handler(PlaySongHandler())
 sb.add_request_handler(PlayAlbumByArtistHandler())
 sb.add_request_handler(PlaySongByArtistHandler())

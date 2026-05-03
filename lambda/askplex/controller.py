@@ -656,16 +656,62 @@ class Controller:
         for plex_track in plex_track_list:
             self.add_plex_track(plex_track)
 
-#
-# Plex API control
-#
-    def play_random_music (self) -> Response:
+    def _track_float(self, track: Track, attr_name: str, default: float = 0.0) -> float:
+        value = getattr(track, attr_name, None)
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _track_recency_bonus(self, track: Track) -> float:
         """
-        Plays a random selection of music tracks.
-        This method searches for random tracks. If no tracks are found or an error
-        occurs during the search, an appropriate response is returned. Otherwise,
-        it clears the current playlist, adds the found tracks to the playlist, sets
-        the playlist name, and starts playback.
+        Returns a small bonus for tracks that have not been played recently.
+        Tracks never played get the largest bonus.
+        """
+
+        last_viewed_at = getattr(track, 'lastViewedAt', None)
+        if last_viewed_at is None:
+            return 2.0
+
+        try:
+            age_seconds = max((random.random() * 0) + (0), 0)
+            age_seconds = max((__import__('datetime').datetime.now(last_viewed_at.tzinfo) - last_viewed_at).total_seconds(), 0)
+            age_days = age_seconds / 86400.0
+        except Exception:
+            return 0.0
+
+        return min(age_days / 30.0, 2.0)
+
+    def _library_radio_score(self, track: Track) -> float:
+        """
+        Approximate a "library radio" style score using available Plex metadata.
+        Higher score means the track is more likely to be selected.
+        """
+
+        user_rating = self._track_float(track, 'userRating')
+        critic_rating = self._track_float(track, 'rating')
+        view_count = self._track_float(track, 'viewCount')
+        recency_bonus = self._track_recency_bonus(track)
+        randomness = random.uniform(0.0, 1.5)
+
+        return (
+                (user_rating * 3.0) +
+                (critic_rating * 1.5) +
+                min(view_count, 10.0) * 0.15 +
+                recency_bonus +
+                randomness
+        )
+
+    #
+    # Plex API control
+    #
+    def play_random_music(self) -> Response:
+        """
+        Plays a "library radio" style mix.
+        This approximates Plex Library Radio by starting from a random candidate pool,
+        then favouring tracks with higher ratings and tracks not played recently.
         Returns:
             Response: The response object containing the result of the playback action.
         """
@@ -680,23 +726,122 @@ class Controller:
         if response is not None:
             return response
 
-        # Search for random tracks
+        max_results = max(int(config.PMS_DEFAULT_MAX_RESULTS), 1)
+        # Can't go higher than * 2 or we blow the 8 second Lambda budget and get
+        # <pause for ~10 seconds> "There was a problem with the requested skill's response"
+        # * 2 will be more repetitive (2.2% vs 1.1%) each "play some music", without * 2 will be more deep-cuts and
+        # less repetitive. Decimals (eg 1.5) "error when connecting to the Plex media server":
+        #candidate_count = max(max_results, 100)
+        candidate_count = max(max_results * 2, 100)
+
+        # Build a random candidate pool first so playback differs between requests.
         try:
-            plex_track_list = self.section.searchTracks(sort='random', maxresults=config.PMS_DEFAULT_MAX_RESULTS)
+            candidate_tracks = self.section.searchTracks(sort='random', maxresults=candidate_count)
         except Exception as exception:
             speak_output = data[prompts.PMS_CONNECTION_ERROR]
             self.logger.error(exception)
             return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
-        if len(plex_track_list) == 0:
+        if len(candidate_tracks) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        # Deduplicate by rating key in case Plex returns repeated items.
+        deduped_candidates = []
+        seen_rating_keys = set()
+        for track in candidate_tracks:
+            rating_key = str(getattr(track, 'ratingKey', ''))
+            if rating_key in seen_rating_keys:
+                continue
+            seen_rating_keys.add(rating_key)
+            deduped_candidates.append(track)
+
+        scored_tracks = sorted(
+            deduped_candidates,
+            key=self._library_radio_score,
+            reverse=True,
+        )
+
+        selected_tracks = scored_tracks[:max_results]
+        if len(selected_tracks) == 0:
             speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
             self.logger.error(speak_output)
             return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
         self.clear_playlist()
-        self.add_plex_tracks(plex_track_list)
+        self.add_plex_tracks(selected_tracks)
 
         playlist_name = data[prompts.PMS_PLNAME_RANDOM_MUSIC]
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+
+        return self.start_playback()
+
+
+    def play_deep_cuts(self) -> Response:
+        """
+        Plays a "deep cuts" style mix.
+        This uses a smaller candidate pool than library radio, which makes the final
+        selection less repetitive and more likely to surface less obvious tracks.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_deep_cuts()')
+
+        # get localization data
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        # Get the music section
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        max_results = max(int(config.PMS_DEFAULT_MAX_RESULTS), 1)
+        candidate_count = max(max_results, 100)
+
+        # Build a random candidate pool first so playback differs between requests.
+        try:
+            candidate_tracks = self.section.searchTracks(sort='random', maxresults=candidate_count)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_CONNECTION_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(candidate_tracks) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        deduped_candidates = []
+        seen_rating_keys = set()
+        for track in candidate_tracks:
+            rating_key = str(getattr(track, 'ratingKey', ''))
+            if rating_key in seen_rating_keys:
+                continue
+            seen_rating_keys.add(rating_key)
+            deduped_candidates.append(track)
+
+        scored_tracks = sorted(
+            deduped_candidates,
+            key=self._library_radio_score,
+            reverse=True,
+        )
+
+        selected_tracks = scored_tracks[:max_results]
+        if len(selected_tracks) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        self.clear_playlist()
+        self.add_plex_tracks(selected_tracks)
+
+        playlist_name = 'Deep cuts'
         self.set_playlist_name(playlist_name)
         speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
 
@@ -827,6 +972,62 @@ class Controller:
         self.handler_input.response_builder.speak(speak_output)
         self.logger.info(speak_output)
         return self.start_playback()
+
+    def play_named_track(self) -> Response:
+        """
+        Play a specific named track using the custom track_names slot.
+        Returns:
+            Response: The response object containing the result of the playback action.
+        """
+
+        self.logger.debug('In play_named_track()')
+
+        # get localization data
+        data = self.handler_input.attributes_manager.request_attributes["_"]
+
+        # Get variable(s) from intent
+        track_name = get_slot_value_v2(self.handler_input, 'track_name')
+        if track_name is None:
+            speak_output = data[prompts.SKILL_INTENT_SLOTS_MISSING]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        # Get the music section
+        response = self.load_music_section()
+        if response is not None:
+            return response
+
+        # Search for the track
+        try:
+            plex_track_list = self.section.searchTracks(title=track_name.value)
+        except Exception as exception:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_ERROR]
+            self.logger.error(exception)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        if len(plex_track_list) == 0:
+            speak_output = data[prompts.PMS_TRACKS_SEARCH_EMPTY]
+            self.logger.error(speak_output)
+            return self.handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        track_name_cf = track_name.value.strip().casefold()
+        exact_match = next(
+            (track for track in plex_track_list if track.title.casefold() == track_name_cf),
+            None,
+        )
+        plex_track = exact_match if exact_match is not None else plex_track_list[0]
+
+        self.clear_playlist()
+        self.add_plex_track(plex_track)
+
+        playlist_name = plex_track.title
+        self.set_playlist_name(playlist_name)
+        speak_output = data[prompts.PMS_PLAYING].format(playlist_name)
+
+        self.handler_input.response_builder.speak(speak_output)
+        self.logger.info(speak_output)
+        return self.start_playback()
+
 
 
     def play_song_by_artist (self) -> Response:
